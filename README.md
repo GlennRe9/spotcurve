@@ -36,7 +36,7 @@ The methods implemented in this project are inspired by the paper:
   - `scipy`
 
 Install the dependencies using pip:
-```bash
+bash
 pip install numpy pandas matplotlib scikit-learn scipy
 
 
@@ -59,7 +59,7 @@ Usage
 	2.	Run the Program:
 Execute the main.py script:
 
-python main.py
+```python main.py```
 
 
 	3.	Configuration:
