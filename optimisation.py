@@ -23,16 +23,17 @@ def objective_function(X, H):
     """
     return 0.5 * np.dot(X.T, np.dot(H, X))
 
-def run_optimisation(clean_data):
+def run_optimisation(clean_data, compounding):
     # Number of bonds
     m = len(clean_data)
 
     # Build the constraints
-    A, B = constraints.build_pricing_constraints(clean_data)
+    A, B = constraints.build_pricing_constraints(clean_data, compounding)
 
     # Define the segment boundaries based on the 'Ttm' column
     segment_boundaries = clean_data['Ttm'].values  # Assumes 'Ttm' contains the time-to-maturity for each bond
-
+    # Adding the 0 point
+    segment_boundaries = np.insert(segment_boundaries, 0, 0.0)
     # Construct the smoothness penalty matrix H based on the specified structure
     H = construct_smoothness_penalty_matrix(segment_boundaries)
 
