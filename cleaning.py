@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 pd.options.mode.chained_assignment = None
 
 
-def clean_data(bondData, sheet):
-    today = pd.Timestamp.today()
+def clean_data(bondData, sheet, today):
+    today = pd.Timestamp.today() if today is None else today
     bondData = bondData[sheet]
     bondData.columns = bondData.iloc[0]
     bondData = bondData.drop([0])
@@ -56,3 +56,53 @@ def bond_cleaner(bondData):
     bondData['ISIN'] = bondData['ISIN'].apply(lambda x: 'IT' + ''.join([str(np.random.randint(0, 10)) for _ in range(10)]) if pd.isna(x) else x)
 
     return bondData
+
+
+def find_on_the_run(bondData):
+    on_run_list = [3,5,7,10,15,20,50]
+    bondData_c = bondData.copy()
+
+
+    bondData_c['Issue Date'] = pd.to_datetime(bondData['Issue Date'], errors='coerce')
+    bondData_c['Ttm'] = pd.to_numeric(bondData['Ttm'], errors='coerce')
+    #We remove the zeros and re-add them later
+    pure_zeros = bondData_c[(bondData_c['Coupon'] == 0) & (bondData_c['Next Coupon Date'].isna())]
+    coupon_zeros = bondData_c[(pd.isna(bondData_c['Next Coupon Date'])) & (bondData_c['Coupon'] != 0)]
+    zeros = pd.concat([pure_zeros, coupon_zeros], axis=0)
+
+    zeros = zeros[:1]
+
+    selected_bonds = []
+
+    for target_ttm in on_run_list:
+        lower_bound = target_ttm * 0.8
+        upper_bound = target_ttm * 1.2
+
+        # Filter bonds within the range
+        valid_bonds = bondData_c[
+            (bondData_c['Ttm'] >= lower_bound) &
+            (bondData_c['Ttm'] <= upper_bound)
+            ].dropna(subset=['Issue Date'])
+
+        if not valid_bonds.empty:
+            # Select the most recently issued bond in this range
+            most_recent_bond = valid_bonds.sort_values(
+                by='Issue Date',
+                ascending=False
+            ).head(1)  # Keep it as a DataFrame, not a Series
+
+            selected_bonds.append(most_recent_bond)
+        else:
+            print(f"No valid bond found for target Ttm = {target_ttm} (Range: {lower_bound:.2f} to {upper_bound:.2f})")
+
+    # Combine selected bonds into a DataFrame
+    if selected_bonds:
+        bondData_c = pd.concat(selected_bonds).sort_values(by=['Ttm']).reset_index(drop=True)
+        bondData_c.columns.name=None
+    else:
+        bondData_c = pd.DataFrame()
+    logger.info(f"Bond dataframe reduced from length  {len(bondData)} to length {len(bondData_c)}.")
+    bondData = bondData_c.copy()
+    logger.info(f"{bondData}")
+    return bondData, zeros
+
