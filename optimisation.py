@@ -5,6 +5,8 @@ from scipy.optimize import minimize, LinearConstraint
 from scipy.linalg import block_diag, solve
 import constraints as constraints
 import logging
+logger = logging.getLogger(__name__)
+
 
 import numpy as np
 from scipy.optimize import minimize, LinearConstraint
@@ -22,6 +24,50 @@ def objective_function(X, H):
     float: The value of the objective function (smoothness penalty).
     """
     return 0.5 * np.dot(X.T, np.dot(H, X))
+
+def prep_optimisation(updated_spot_df, x, segment_boundaries, compounding):
+    optimised_spot_df = updated_spot_df.copy()
+    for i, ttm in enumerate(segment_boundaries):
+        # Identify the appropriate segment for this Ttm
+        segment_index = min(i, len(segment_boundaries) - 1)  # Avoids going out of bounds
+        a, b, c, d, e = x[segment_index * 5:(segment_index + 1) * 5]
+
+        # Calculate forward rate for this specific Ttm using the segment's polynomial coefficients
+        # I believe this one is assigned to the forward rate from 0 to 0+n, because the first
+        # constraint calculates the coefficients from the left of the first node to the right of the first node
+        forward_rate = a * ttm ** 4 + b * ttm ** 3 + c * ttm ** 2 + d * ttm + e
+
+        # ttm2 = updated_spot_df['Ttm'].iloc[i + 1]
+        # Update the forward rate in updated_spot_df at this Ttm
+        optimised_spot_df.loc[optimised_spot_df['Ttm'] == ttm, 'f'] = forward_rate
+
+        logger.info(f"Updated forward rate at Ttm={ttm} is {forward_rate:.6f}")
+
+    # We start from the last bond, working our way down from forward to discount factors
+    for i in range(len(optimised_spot_df) - 1, 0, -1):
+        if compounding == "Cont":
+            # Continuous method
+            optimised_spot_df.loc[i, 'df'] = optimised_spot_df.loc[i + 1, 'df'] * np.exp(
+                -optimised_spot_df.loc[i + 1, 'f'] * optimised_spot_df.loc[i + 1, 'Delta_t']
+            )
+        elif compounding == "Discrete":
+            # Discrete method
+            new_df = optimised_spot_df.loc[i - 1, 'df'] / (1 + optimised_spot_df.loc[i, 'f']) ** \
+                     optimised_spot_df.loc[i, 'Delta_t']
+            optimised_spot_df.loc[i, 'df'] = new_df
+            logger.info(
+                f" Old discount factor: {optimised_spot_df.loc[i, 'df']}, New discount factor: {new_df}")
+        else:
+            raise ValueError("Invalid compounding method. Choose 'Discrete' or 'Cont'.")
+
+    # Recalculate the spot rates from the updated discount factors
+    if compounding == "Cont":
+        optimised_spot_df['Spot'] = -np.log(optimised_spot_df['df']) / optimised_spot_df['Ttm']
+    elif compounding == "Discrete":
+        optimised_spot_df['Spot'] = (1 / optimised_spot_df['df']) ** (1 / optimised_spot_df['Ttm']) - 1
+
+    return optimised_spot_df
+
 
 def run_optimisation(clean_data, compounding):
     # Number of bonds

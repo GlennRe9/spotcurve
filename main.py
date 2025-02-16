@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import logging
+import logging, os
 from datetime import date
 import json
 import statistics
@@ -86,6 +86,71 @@ def build_forward_curve_from_coefficients(X, segment_boundaries):
 
     plt.show()
 
+def build_forward_and_spot_curve(x, segment_boundaries):
+    n_segments = len(segment_boundaries) + 1  # Adding the n+1 segment
+    nodes = n_segments - 1
+    coefficients = x.reshape((n_segments, 5))  # Reshape x into segments, 5 coefficients each
+
+    # Define colors for each segment
+    colors = ['blue', 'orange', 'yellow', 'green', 'red', 'black', 'purple', 'brown', 'pink', 'gray']
+    spot_color = '#FFD700'  # Bright shade of gold
+
+    # Add segment from 0
+    segment_boundaries = np.insert(segment_boundaries, 0, 0)
+    segment_boundaries = np.append(segment_boundaries, segment_boundaries[-1] + 1)
+
+    # Arrays to store the full curve (forward rates and T_values)
+    all_T_values = []
+    all_f_values = []
+
+    # Generate forward rates and T_values for all segments
+    for i in range(nodes):
+        col = colors[i % len(colors)]
+        T_start, T_end = segment_boundaries[i], segment_boundaries[i + 1]
+        a, b, c, d, e = coefficients[i]
+
+        # Generate points for the segment
+        T_values = np.linspace(T_start, T_end, 100)
+        f_values = a * T_values ** 4 + b * T_values ** 3 + c * T_values ** 2 + d * T_values + e
+
+        # Store the segment values in the full curve arrays
+        all_T_values.append(T_values)
+        all_f_values.append(f_values)
+
+        # Plot the forward curve for this segment
+        plt.plot(T_values, f_values, color=col, label=f'Forward Curve {i + 1} ({T_start:.3f} to {T_end:.3f})')
+
+    # Concatenate all segments into continuous arrays
+    all_T_values = np.concatenate(all_T_values)
+    all_f_values = np.concatenate(all_f_values)
+
+    # Remove the first T_value if it is zero (to avoid division by zero in spot calculation)
+    valid_indices = all_T_values > 0
+    all_T_values = all_T_values[valid_indices]
+    all_f_values = all_f_values[valid_indices]
+
+    # Compute the cumulative integral of forward rates over all segments
+    cumulative_integral = np.cumsum(all_f_values * np.gradient(all_T_values))  # Approximate the integral
+
+    # Compute the spot rates
+    spot_rates = cumulative_integral / all_T_values
+
+    # Plot the spot curve (continuous line)
+    plt.plot(all_T_values, spot_rates, color=spot_color, linewidth=2, label="Spot Curve")
+
+    # Add labels and legend
+    plt.xlabel("Time to Maturity (T)")
+    plt.ylabel("Rate (%)")
+    plt.title("Forward Curve & Spot Curve - BTP curve - 03-02-2025")
+
+    # Adjust the legend position to avoid overlap
+    plt.legend(loc="upper left", bbox_to_anchor=(1.05, 1), fontsize='small')
+    plt.grid(True)
+
+    # Tighten layout to make space for the legend
+    plt.tight_layout()
+
+    plt.show()
 
 def curve_builder(bondDatabase, zeros, cashflow_df, bond_calculator, curve_manager, compounding):
     if zeros is None:
@@ -135,9 +200,14 @@ def curve_builder(bondDatabase, zeros, cashflow_df, bond_calculator, curve_manag
 
     # Visualising the forward curve
     # build_forward_curve_from_coefficients(x, segment_boundaries)
+    build_forward_and_spot_curve(x, segment_boundaries)
 
     # Z spread calculation
-    bond_calculator.z_spread_calculator(cashflow_df, zeros, final_df, compounding, curve_manager)
+    z_spreads = bond_calculator.z_spread_calculator(cashflow_df, zeros, final_df, compounding, curve_manager)
+
+    # Merge final_df with z_spreads on the ISIN column
+    final_df = final_df.merge(z_spreads, on="ISIN", how="left")
+    logger.info(f"Updated final_df with Z-Spreads:\n{final_df}")
 
     # optimisation.iterative_optimisation(zeros, coupon_bonds)
 
@@ -151,7 +221,10 @@ def main():
 
     sheet = 'hardcopy'  # Monitor #hardcopy # TestCurve # USCurve
 
-    bondData = pd.read_excel("BTP_data.xlsx", parse_dates=True, sheet_name=[sheet])
+    # Ensure the path correctly points to the spotcurve directory
+    spotcurve_path = os.path.dirname(os.path.abspath(__file__))  # Gets the path of main.py
+    btp_file_path = os.path.join(spotcurve_path, "BTP_data.xlsx")
+    bondData = pd.read_excel(btp_file_path, parse_dates=True, sheet_name=[sheet])
     bondData = clean_data(bondData, sheet, today)
 
     bondDatabase = bondData.copy()
@@ -166,5 +239,7 @@ def main():
 
     curve_builder(bondData, zeros, cashflows_df, bond_calculator, curve_manager, compounding)
 
+    return curve_manager.forward_curve, curve_manager.segment_boundaries
 
-main()
+if __name__ == "__main__":
+    main()

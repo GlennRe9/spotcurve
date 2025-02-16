@@ -152,7 +152,8 @@ class BondCalculator:
             'Maturity Date': maturity,
             'Yield to Maturity': bond['Yield to Maturity'],
             'Ttm': bond['Ttm'],
-            'Spot': None
+            'Spot': None,
+            'Z-spread': bond['Z-Spread']
         })
 
         # Add final coupon payment with face value at maturity
