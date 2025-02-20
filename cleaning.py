@@ -70,7 +70,17 @@ def find_on_the_run(bondData):
     coupon_zeros = bondData_c[(pd.isna(bondData_c['Next Coupon Date'])) & (bondData_c['Coupon'] != 0)]
     zeros = pd.concat([pure_zeros, coupon_zeros], axis=0)
 
-    zeros = zeros[:1]
+    # We arbitrarily select the second and the last. The second, because the first is too close to maturity.
+    # The last, because it carries some value as the last zcb available
+    # Select first, second, and last zero-coupon bond
+    if len(zeros) > 2:
+        zeros = pd.concat([zeros.iloc[[1]], zeros.iloc[[-1]]])
+    elif len(zeros) == 2:
+        zeros = zeros  # Keep both if only two exist
+    elif len(zeros) == 1:
+        zeros = zeros  # Keep the only available one
+    else:
+        zeros = pd.DataFrame()
 
     selected_bonds = []
 

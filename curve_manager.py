@@ -27,8 +27,6 @@ class CurveManager:
         self.forward_curve = x
         self.segment_boundaries = segment_boundaries
 
-
-
     def perturbation_function(self, updated_spot_df, bond_calculator, bond_cf):
         s = updated_spot_df['Spot'].iloc[-1]
         f = updated_spot_df['f'].iloc[-1]
@@ -156,8 +154,8 @@ class CurveManager:
             bond_cf.loc[bond_cf.index[-1], 'Spot'] = initial_spot_rate
             bond_cf.loc[bond_cf.index[-1], 'df'] = initial_df
 
-            # We store the cash flows in the bond_cfs dataframe
-            bond_cfs = pd.concat([bond_cfs, bond_cf.copy()], ignore_index=True)
+            # # We store the cash flows in the bond_cfs dataframe
+            # bond_cfs = pd.concat([bond_cfs, bond_cf.copy()], ignore_index=True)
 
             final_cf = bond_cf.iloc[[-1]]  # Last cash flow
             final_cf.drop(columns=['CF Date'], inplace=True)
@@ -214,6 +212,11 @@ class CurveManager:
             # updated_spot_df.loc[updated_spot_df['ISIN'] == isin, 'f'] = f
 
             updated_spot_df = self.perturbation_function(optimised_spot_df, bond_calculator, bond_cf)
+
+
+            # Rerunning optimisation
+            x = optimisation.run_optimisation(updated_spot_df, compounding)
+            updated_spot_df = optimisation.prep_optimisation(updated_spot_df, x, segment_boundaries, compounding)
 
             ind = updated_spot_df['Ttm'].values.reshape(-1, 1)  # Independent variable (Ttm)
             dep = updated_spot_df['Spot'].values  # Dependent variable (Spot)
